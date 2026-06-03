@@ -291,8 +291,9 @@
           <form class="hero-send" onsubmit="return sendSteps(event)">
             <input type="email" placeholder="you@yourpractice.com" required autocomplete="email" aria-label="Your email address" />
             <button type="submit">Email me the steps</button>
+            <input type="text" name="company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" />
           </form>
-          <div class="sent-msg">✓ Opening your email with the steps &amp; link prefilled…</div>
+          <div class="sent-msg">✓ Check your inbox for the update steps &amp; link.</div>
           <div class="hero-links">At your CEREC right now? <a href="#final">Go straight to the update →</a> &nbsp;·&nbsp; <a href="#steps">See the 3 steps</a></div>
           <div class="micro"><span>✓ Free</span><span>✓ Official Dentsply Sirona update</span><span>✓ ~5 minutes</span></div>
         </div>
@@ -448,32 +449,49 @@
   // --- email-to-self mechanic ---
   // Preview: opens user's mail client with steps + link prefilled.
   // Production: POST to your ESP (Resend) and fire a 'Lead'/'SendSteps' conversion.
-  function sendSteps(e){
+  async function sendSteps(e){
     e.preventDefault();
     var form = e.target;
     var input = form.querySelector('input[type=email]');
     var email = input ? input.value.trim() : '';
     if(!email) return false;
-    track('SendSteps');
-
-    var link = "https://coresupport.dentsplysirona.com/doc/cm-10784683147-en-US/t-10784683147-10769814283-en-US?utm_source=meta&utm_medium=paid_social&utm_campaign=katana_speed_softwarefix_jun26&utm_content=email_steps";
-    var subject = "Your KATANA Zirconia ONE SPEED software update";
-    var body =
-      "Do this at your CEREC / inLab workstation:\n\n" +
-      "1) Open your CEREC or inLab software and check the version.\n" +
-      "2) Update to a supported version:\n" +
-      "   • CEREC Software 5.2.14 or 5.3.5\n" +
-      "   • inLab CAM Software 22.8\n" +
-      "3) Select KATANA Zirconia ONE SPEED (A2 / A3), mill in SUPERFAST mode, sinter 9 minutes in CEREC SpeedFire.\n\n" +
-      "Get the official update:\n" + link + "\n\n" +
-      "Need help? Kuraray Noritake Dental: (800) 879-1676\n";
-
+    var honeypot = (form.querySelector('input[name=company]') || {}).value || '';
     var msg = form.parentNode.querySelector('.sent-msg');
-    if(msg) msg.classList.add('show');
-    window.location.href = "mailto:" + encodeURIComponent(email) +
-      "?subject=" + encodeURIComponent(subject) +
-      "&body=" + encodeURIComponent(body);
-    return false;
+    track('SendSteps');
+    if(msg){ msg.textContent = 'Sending your update steps…'; msg.classList.add('show'); }
+
+    try{
+      var r = await fetch('/api/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, company: honeypot })
+      });
+      var data = await r.json().catch(function(){ return {}; });
+      if(r.ok && data.ok){
+        if(msg) msg.textContent = '✓ Sent! Check your inbox for the update steps & link.';
+        form.reset();
+        return false;
+      }
+      throw new Error((data && data.error) || 'send_failed');
+    }catch(err){
+      // Fallback: open the visitor's own mail client with the steps prefilled
+      if(msg) msg.textContent = 'Opening your email with the steps prefilled…';
+      var link = "https://coresupport.dentsplysirona.com/doc/cm-10784683147-en-US/t-10784683147-10769814283-en-US?utm_source=meta&utm_medium=mailto_fallback&utm_campaign=katana_speed_softwarefix_jun26";
+      var subject = "Your KATANA Zirconia ONE SPEED software update";
+      var body =
+        "Do this at your CEREC / inLab workstation:\n\n" +
+        "1) Open your CEREC or inLab software and check the version.\n" +
+        "2) Update to a supported version:\n" +
+        "   • CEREC Software 5.2.14 or 5.3.5\n" +
+        "   • inLab CAM Software 22.8\n" +
+        "3) Select KATANA Zirconia ONE SPEED (A2 / A3), mill in SUPERFAST mode, sinter 9 minutes in CEREC SpeedFire.\n\n" +
+        "Get the official update:\n" + link + "\n\n" +
+        "Need help? Kuraray Noritake Dental: (800) 879-1676\n";
+      window.location.href = "mailto:" + encodeURIComponent(email) +
+        "?subject=" + encodeURIComponent(subject) +
+        "&body=" + encodeURIComponent(body);
+      return false;
+    }
   }
 </script>
 </body>
